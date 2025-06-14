@@ -1,4 +1,4 @@
-# 🧬 PLEXUS Biomarker Discovery
+ 🧬 PLEXUS Biomarker Discovery
 
 This repository contains the analysis of the PLEXUS dataset aimed at identifying protein-based blood biomarkers associated with Inflammatory Bowel Disease (IBD), using Olink proteomics technology.
 
