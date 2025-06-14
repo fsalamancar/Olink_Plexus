@@ -1,0 +1,139 @@
+#Modelamiento de biomarcadores proteinicos UCvsCD, ustilizando datos del PLEXUS####
+
+#Carga de paquetes####
+packages <- function(requirements,quiet=FALSE){
+  has   <- requirements %in% rownames(installed.packages())
+  if(any(!has)){
+    message("Installing packages...")
+    setRepositories(ind=c(1:7))
+    r <- getOption("repos")
+    r["CRAN"] <- "https://cran.uni-muenster.de/"
+    #options(install.packages.check.source = "no")
+    install.packages(requirements[!has],repos=r)
+  }
+  if(quiet){
+    for(r in requirements){suppressMessages(require(r,character.only=TRUE))}
+  }else for(r in requirements){message(paste(r,suppressMessages(require(r,character.only=TRUE)),sep=': '))}
+}
+packages(c('tidyverse',"tidyr","readxl","readr","tibble","forcats","purrr","stringr","readxl",'data.table',"ggrepel","dplyr","openxlsx","fs","ggplot2","snpStats","data.table","qqman","CMplot"))
+
+
+#Carga de datos####
+
+#Carga de tabla expresiones del Plexus 
+plexus_raw <- read.csv("Plexus_rawdata.csv", sep=";") %>% as.tibble()
+plexus_raw_inflammation <-  plexus_raw %>% filter(str_detect(Panel,"Inflammation") & QC_Warning == "PASS") 
+plexus_raw_inflammation <- plexus_raw_inflammation %>% dplyr::select(SampleID,Index,OlinkID,Assay,NPX) %>% rename(ID=SampleID)
+
+#Carga de tabla de metadatos del Plexus
+plexus_metadata <- read.delim("Plexus_metadata.tsv")%>% dplyr::rename(ID=RAW_DATA_FILE_NAME)
+plexus_metadata[,1] <- str_replace(plexus_metadata[,1], "\\.0$", "") 
+
+#Join para dejar solo una tabla, ordenar y remover "IBD Unclassified"
+Plexus_InflammatoryPanel <- plexus_raw_inflammation %>% left_join(plexus_metadata, by = "ID") %>% drop_na()
+Plexus_InflammatoryPanel <- Plexus_InflammatoryPanel %>% dplyr::select(ID,Assay,NPX,SEX,DIAGNOSIS) %>% pivot_wider(names_from = Assay, values_from = NPX)
+Plexus_InflammatoryPanel <- Plexus_InflammatoryPanel %>%  filter(str_detect(DIAGNOSIS,"Crohn|Ulcerative"))
+
+#Escribir la tabla en el proyecto
+write.csv(Plexus_InflammatoryPanel,"Plexus_InflammatoryPanel.csv")
+
+#Escribir la tabla en formato largo
+Plexus_InflammatoryPanel_Long <- Plexus_InflammatoryPanel%>%pivot_longer(cols = -c(1:3), names_to = "Protein", values_to = "value") %>% mutate(value=as.numeric(str_replace(value,",",".")))
+write.csv(Plexus_InflammatoryPanel_Long,"Plexus_InflammatoryPanel_Long.csv")
+
+#Pre-Visualizaciones####
+#Boxplots
+ggplot(Plexus_InflammatoryPanel_Long, aes(x = DIAGNOSIS, y = value, fill = DIAGNOSIS)) +
+  geom_boxplot() +
+  labs(title = "Distribución de valores de proteínas por diagnóstico",
+       x = "Diagnóstico", y = "Valor de la proteína") +
+  theme_minimal()
+
+
+#Modelo####
+## lets qc a bit, removing outliers, values < qci (1%) and > qcf (99%) - for each cohort
+
+getAssocs <-  function(outliers=0.01){
+  
+  #Calcula los cuantiles
+  qci <- Plexus_InflammatoryPanel_Long%>%group_by(Protein,DIAGNOSIS)%>%summarise(qci=quantile(value,(0+outliers),na.rm=T))
+  qcf <- Plexus_InflammatoryPanel_Long%>%group_by(Protein,DIAGNOSIS)%>%summarise(qcf=quantile(value,(1-outliers),na.rm=T))
+  
+
+  ##Actualiza los valores atipicos encontrados como NA (los valores bajo qci y sobre qcf se reemplazan por NA)
+  Plexus_InflammatoryPanel_Long_qc <- Plexus_InflammatoryPanel_Long%>%
+    left_join(qci,by=c("Protein","DIAGNOSIS"))%>%
+    left_join(qcf,by=c("Protein","DIAGNOSIS"))%>%
+    mutate(value_qc=case_when(value<qci~NA_real_,value>qcf~NA_real_,TRUE~value))
+  
+  write.csv(Plexus_InflammatoryPanel_Long_qc, file = "Plexus_InflammatoryPanel_Long_qc.csv", row.names=FALSE)
+  
+  
+  #Boxplots de los datos filtrados sin outliers
+  p2 <- ggplot(Plexus_InflammatoryPanel_Long_qc,aes(x=value_qc, y= value, fill=DIAGNOSIS))+
+    geom_boxplot() +
+    labs(title = "Distribución de valores de proteínas por diagnóstico",
+         x = "Diagnóstico", y = "Valor de la proteína qc") +
+    theme_minimal()
+  
+  ggsave(plot_path,"ol_",outliers,"_histograms_rawdata_qc.pdf"),p2,width=25,height=25)
+
+  
+  
+  
+  # grafico de outliers eliminados
+  
+  p3 <- rawdata_long_qc%>%group_by(protein)%>%
+    filter(is.na(value_qc))%>%ggplot(aes(x=protein,fill=cohort_status))+
+    geom_bar()+
+    theme(axis.text.x = element_text(angle = 90, hjust = 1))+
+    theme_minimal()
+  ggsave(paste0(plot_path,"ol_",outliers,"_Number_of_outliers_removed_by_protein.pdf"),p3,width=15,height=7)
+  
+  
+  
+  
+  ##
+  ## calculate the association of each protein value with the status variable correcting by the variable Gender
+  ##Status como variable dependiente y value,gender, cohort como variables independientes
+  ## we will use a logistic model
+  
+  assocs <- tibble()
+  for (p in unique(rawdata_long_qc$protein)){
+    assoc <- glm(status ~ value_qc + Gender + cohort, data = rawdata_long_qc%>%filter(protein==p), family = binomial(link = "logit"))
+    summary(assoc)
+    assoc_sum <- summary(assoc)$coefficients%>%as.data.frame()%>%
+      rownames_to_column("variable")%>%
+      mutate(protein=p,.before=1)%>%
+      rename(Pvalue="Pr(>|z|)")%>%
+      mutate(variable=str_replace_all(variable,"\\(|\\)",""))%>%
+      as_tibble() 
+    colnames(assoc_sum) <- c("protein","variable","Estimate","StdError","Zvalue","Pvalue")
+    assocs <- bind_rows(assocs,assoc_sum)
+  }
+  assocs%>%write_tsv(paste0(outpath,"ol_",outliers,"_assocs.txt"))
+  
+  
+  ##Ajuste de FDR y graficos de los resultados(graficos de puntos y de volcan)
+  assocdf <- assocs%>%filter(variable=="value_qc")%>%mutate(PvalueFDR=p.adjust(Pvalue,method="fdr"))
+assoc
+  ## dot plot of the extimate across proteins (estimate in descending) and color based on pvalue, pvalue < 0.05 in red. The y axes will be the protein
+  sortedplot <- assocdf%>%arrange((Estimate))
+  p4 <- ggplot(assocdf%>%mutate(protein=factor(protein,levels=sortedplot$protein)),aes(x=Estimate,y=protein,color=PvalueFDR<0.05))+geom_point(cex=4)+theme(axis.text.y = element_text(size=13))+scale_color_manual(values=c("#53545b","red"))+theme(legend.position = "none")+theme_minimal()
+  ggsave(paste0(plot_path,"ol_",outliers,"_dotplot_associations.pdf"),p4,width=8,height=15)
+  
+  
+  # volcano plot # put the name of the proteins with pvalue < 0.05 in the plot with lines and do not overlap
+  p5 <- ggplot(assocdf,aes(x=Estimate,y=-log10(Pvalue),label=ifelse(Pvalue<0.05,protein,""),color=PvalueFDR<0.05))+geom_point()+geom_text_repel()+theme(axis.text.y = element_text(size=8))+scale_color_manual(values=c("#53545b","red"))+theme(legend.position = "none")+theme_minimal()
+  ggsave(paste0(plot_path,"ol_",outliers,"_volcanoplot_associations.pdf"),p5,width=8,height=8)#
+  
+  #Obtener datasets con proteinas significativas.
+  result <- subset(assocdf, PvalueFDR < 0.05) #Cambiar a PValue o PValueFDR segun si se quiere las significativas corregidas. 
+  write.csv(result, file = "assocdf_filtradoCONFDR.csv", row.names = FALSE)
+  
+}
+
+
+
+##llamada de la funcion
+getAssocs(outliers=0.03)

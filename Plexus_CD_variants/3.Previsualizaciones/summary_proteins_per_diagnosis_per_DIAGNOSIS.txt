@@ -1,0 +1,3 @@
+DIAGNOSIS	mean_value	sd_value	min_value	max_value	median_value
+Crohn's Disease	0.860058525536898	1.58258441572894	-12.4212	14.3919	0.4637
+Ulcerative Colitis	0.890620379506047	1.61727791672773	-12.584	14.0267	0.4561
