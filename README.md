@@ -49,6 +49,10 @@ Processes and prepares the dataset, ensuring quality and consistency for associa
 📄 `Modeling.R`  
 Runs protein-by-protein logistic regression to identify associations with the selected phenotype, adjusted by the previously selected covariates.
 
+## 📈 Report 
+All the report is located here:
+[Canva]([https://github.com/fsalamancar](https://www.canva.com/design/DAGqQGKoXSs/HaPH_ilYu55EN4hwsyPCCA/edit))
+
 ## 🧪 Technology Stack
 
 - 🔬 Olink Explore – Protein biomarker quantification platform  
