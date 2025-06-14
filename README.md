@@ -1,5 +1,9 @@
 # 🧬 PLEXUS Biomarker Discovery
 
+![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)  
+![Status](https://img.shields.io/badge/status-Research%20Project-yellow)
+
+
 This repository contains the analysis of the PLEXUS dataset aimed at identifying protein-based blood biomarkers associated with Inflammatory Bowel Disease (IBD), using Olink proteomics technology.
 
 The project focuses on two main components:
