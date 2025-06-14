@@ -64,4 +64,4 @@ All required packages and dependencies are listed in `requirements.txt`.
 
 **Francisco Salamanca**  
 Bioinformatician | MSc in Bioinformatics  
-GitHub • Website • LinkedIn
+[GitHub](https://github.com/fsalamancar) • [Website](https://fsalamancar.github.io/) • [LinkedIn](https://www.linkedin.com/in/fjosesala/) • [IKMB](https://www.ikmb.uni-kiel.de/people/francisco-salamanca/)
