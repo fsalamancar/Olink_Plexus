@@ -60,6 +60,9 @@ All the report is located here:
 - 🧠 Feature selection using classification models  
 - 📊 Logistic regression for association analysis
 
+## 💾 Data
+The data is shared via request
+
 ## 📦 Requirements
 
 All required packages and dependencies are listed in `requirements.txt`.
